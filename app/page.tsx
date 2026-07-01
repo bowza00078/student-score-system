@@ -5,12 +5,11 @@ import { useState } from "react";
 type StudentScore = {
   student_id: string;
   no: string;
-  class: string;
   fullname: string;
-  exam_mid: string;
-  exam_final: string;
+  quiz_1: string;
+  quiz_2: string;
+  final_exam: string;
   total: string;
-  grade: string;
   note: string;
 };
 
@@ -127,20 +126,20 @@ export default function Home() {
                 </p>
                 <hr className="my-3" />
                 <p>
-                  <strong>คะแนนกลางภาค:</strong> {student.exam_mid}
-                </p>
-                <p>
-                  <strong>คะแนนปลายภาค:</strong> {student.exam_final}
-                </p>
-                <p>
-                  <strong>คะแนนรวม:</strong> {student.total}
-                </p>
-                <p>
-                  <strong>เกรด:</strong> {student.grade}
-                </p>
-                <p>
-                  <strong>หมายเหตุ:</strong> {student.note || "-"}
-                </p>
+  <strong>คะแนนสอบย่อยครั้งที่ 1:</strong> {student.quiz_1}
+</p>
+<p>
+  <strong>คะแนนสอบย่อยครั้งที่ 2:</strong> {student.quiz_2}
+</p>
+<p>
+  <strong>คะแนนสอบปลายภาค:</strong> {student.final_exam}
+</p>
+<p>
+  <strong>คะแนนรวม:</strong> {student.total}
+</p>
+<p>
+  <strong>หมายเหตุ:</strong> {student.note || "-"}
+</p>
               </div>
             </div>
           )}
