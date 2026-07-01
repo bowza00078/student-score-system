@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 
+type ScoreItem = {
+  label: string;
+  value: string;
+};
+
 type StudentScore = {
   student_id: string;
   no: string;
   fullname: string;
-  quiz_1: string;
-  quiz_2: string;
-  final_exam: string;
-  total: string;
-  note: string;
+  scores: ScoreItem[];
 };
 
 export default function Home() {
@@ -149,28 +150,20 @@ export default function Home() {
 
                 <hr className="my-3" />
 
-                <p>
-                  <strong>คะแนนสอบย่อยครั้งที่ 1:</strong>{" "}
-                  {student.quiz_1 || "-"}
-                </p>
-
-                <p>
-                  <strong>คะแนนสอบย่อยครั้งที่ 2:</strong>{" "}
-                  {student.quiz_2 || "-"}
-                </p>
-
-                <p>
-                  <strong>คะแนนสอบปลายภาค:</strong>{" "}
-                  {student.final_exam || "-"}
-                </p>
-
-                <p>
-                  <strong>คะแนนรวม:</strong> {student.total || "-"}
-                </p>
-
-                <p>
-                  <strong>หมายเหตุ:</strong> {student.note || "-"}
-                </p>
+                {student.scores.length > 0 ? (
+                  <div className="space-y-2">
+                    {student.scores.map((score) => (
+                      <p key={score.label}>
+                        <strong>{score.label}:</strong>{" "}
+                        {score.value || "-"}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500">
+                    ยังไม่มีรายการคะแนนสำหรับนักเรียนคนนี้
+                  </p>
+                )}
               </div>
             </div>
           )}
