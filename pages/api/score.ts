@@ -4,13 +4,12 @@ import { google } from "googleapis";
 type StudentScore = {
   student_id: string;
   no: string;
-  class: string;
   fullname: string;
   password: string;
-  exam_mid: string;
+  quiz_1: string;
+  quiz_2: string;
   exam_final: string;
   total: string;
-  grade: string;
   note: string;
 };
 
@@ -109,12 +108,11 @@ export default async function handler(
     const safeData = {
       student_id: student.student_id,
       no: student.no,
-      class: student.class,
       fullname: student.fullname,
-      exam_mid: student.exam_mid,
-      exam_final: student.exam_final,
+      quiz_1: student.quiz_1,
+      quiz_2: student.quiz_2,
+      final_exam: student.final_exam,
       total: student.total,
-      grade: student.grade,
       note: student.note,
     };
 
