@@ -1,16 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { google } from "googleapis";
 
-type StudentScore = {
+type ScoreItem = {
+  label: string;
+  value: string;
+};
+
+type StudentResult = {
   student_id: string;
   no: string;
   fullname: string;
-  password: string;
-  quiz_1: string;
-  quiz_2: string;
-  final_exam: string;
-  total: string;
-  note: string;
+  scores: ScoreItem[];
 };
 
 function getGoogleAuth() {
@@ -28,6 +28,10 @@ function getGoogleAuth() {
   });
 }
 
+function normalizeText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -35,7 +39,7 @@ export default async function handler(
   if (req.method === "GET") {
     return res.status(200).json({
       status: "API is working",
-      message: "Score API route is available",
+      message: "Dynamic score API route is available",
     });
   }
 
@@ -69,7 +73,7 @@ export default async function handler(
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: "Scores!A1:I",
+      range: "Scores!A1:ZZ",
     });
 
     const rows = response.data.values;
@@ -80,44 +84,69 @@ export default async function handler(
       });
     }
 
-    const headers = rows[0];
+    const headers = rows[0].map((header) => normalizeText(header));
     const dataRows = rows.slice(1);
 
-    const students: StudentScore[] = dataRows.map((row) => {
-      const item: Record<string, string> = {};
+    const studentIdIndex = headers.indexOf("student_id");
+    const noIndex = headers.indexOf("no");
+    const fullnameIndex = headers.indexOf("fullname");
+    const passwordIndex = headers.indexOf("password");
 
-      headers.forEach((header, index) => {
-        item[String(header).trim()] = row[index] || "";
+    if (
+      studentIdIndex === -1 ||
+      noIndex === -1 ||
+      fullnameIndex === -1 ||
+      passwordIndex === -1
+    ) {
+      return res.status(500).json({
+        error:
+          "หัวตารางไม่ถูกต้อง ต้องมี student_id, no, fullname และ password",
       });
+    }
 
-      return item as StudentScore;
+    const foundRow = dataRows.find((row) => {
+      const rowStudentId = normalizeText(row[studentIdIndex]);
+      const rowPassword = normalizeText(row[passwordIndex]);
+
+      return (
+        rowStudentId === normalizeText(studentId) &&
+        rowPassword === normalizeText(password)
+      );
     });
 
-    const student = students.find(
-      (item) =>
-        String(item.student_id).trim() === String(studentId).trim() &&
-        String(item.password).trim() === String(password).trim()
-    );
-
-    if (!student) {
+    if (!foundRow) {
       return res.status(401).json({
         error: "ไม่พบข้อมูล หรือรหัสผ่านไม่ถูกต้อง",
       });
     }
 
-    const safeData = {
-      student_id: student.student_id,
-      no: student.no,
-      fullname: student.fullname,
-      quiz_1: student.quiz_1,
-      quiz_2: student.quiz_2,
-      final_exam: student.final_exam,
-      total: student.total,
-      note: student.note,
+    const fixedColumns = new Set(["student_id", "no", "fullname", "password"]);
+
+    const scores: ScoreItem[] = headers
+      .map((header, index) => {
+        return {
+          header,
+          index,
+        };
+      })
+      .filter((item) => item.header !== "")
+      .filter((item) => !fixedColumns.has(item.header))
+      .map((item) => {
+        return {
+          label: item.header,
+          value: normalizeText(foundRow[item.index]),
+        };
+      });
+
+    const result: StudentResult = {
+      student_id: normalizeText(foundRow[studentIdIndex]),
+      no: normalizeText(foundRow[noIndex]),
+      fullname: normalizeText(foundRow[fullnameIndex]),
+      scores,
     };
 
     return res.status(200).json({
-      student: safeData,
+      student: result,
     });
   } catch (error) {
     console.error("Score API error:", error);
