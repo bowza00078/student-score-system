@@ -14,6 +14,13 @@ type StudentScore = {
   note: string;
 };
 
+export async function GET() {
+  return NextResponse.json({
+    status: "API is working",
+    message: "Score API route is available",
+  });
+}
+
 function getGoogleAuth() {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
@@ -74,7 +81,7 @@ export async function POST(req: NextRequest) {
       const item: Record<string, string> = {};
 
       headers.forEach((header, index) => {
-        item[header] = row[index] || "";
+        item[String(header).trim()] = row[index] || "";
       });
 
       return item as StudentScore;
@@ -82,8 +89,8 @@ export async function POST(req: NextRequest) {
 
     const student = students.find(
       (item) =>
-        item.student_id.trim() === String(studentId).trim() &&
-        item.password.trim() === String(password).trim()
+        String(item.student_id).trim() === String(studentId).trim() &&
+        String(item.password).trim() === String(password).trim()
     );
 
     if (!student) {
@@ -107,7 +114,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ student: safeData });
   } catch (error) {
-    console.error(error);
+    console.error("Score API error:", error);
 
     return NextResponse.json(
       { error: "เกิดข้อผิดพลาดในการอ่านข้อมูลคะแนน" },
