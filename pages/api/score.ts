@@ -8,7 +8,7 @@ type StudentScore = {
   password: string;
   quiz_1: string;
   quiz_2: string;
-  exam_final: string;
+  final_exam: string;
   total: string;
   note: string;
 };
@@ -69,7 +69,7 @@ export default async function handler(
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: "Scores!A1:J",
+      range: "Scores!A1:I",
     });
 
     const rows = response.data.values;
