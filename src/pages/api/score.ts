@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextApiRequest, NextApiResponse } from "next";
 import { google } from "googleapis";
 
 type StudentScore = {
@@ -13,13 +13,6 @@ type StudentScore = {
   grade: string;
   note: string;
 };
-
-export async function GET() {
-  return NextResponse.json({
-    status: "API is working",
-    message: "Score API route is available",
-  });
-}
 
 function getGoogleAuth() {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -36,15 +29,30 @@ function getGoogleAuth() {
   });
 }
 
-export async function POST(req: NextRequest) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method === "GET") {
+    return res.status(200).json({
+      status: "API is working",
+      message: "Score API route is available",
+    });
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      error: "Method not allowed",
+    });
+  }
+
   try {
-    const { studentId, password } = await req.json();
+    const { studentId, password } = req.body;
 
     if (!studentId || !password) {
-      return NextResponse.json(
-        { error: "กรุณากรอกเลขประจำตัวและรหัสผ่าน" },
-        { status: 400 }
-      );
+      return res.status(400).json({
+        error: "กรุณากรอกเลขประจำตัวและรหัสผ่าน",
+      });
     }
 
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
@@ -68,10 +76,9 @@ export async function POST(req: NextRequest) {
     const rows = response.data.values;
 
     if (!rows || rows.length < 2) {
-      return NextResponse.json(
-        { error: "ยังไม่มีข้อมูลคะแนนในระบบ" },
-        { status: 404 }
-      );
+      return res.status(404).json({
+        error: "ยังไม่มีข้อมูลคะแนนในระบบ",
+      });
     }
 
     const headers = rows[0];
@@ -94,10 +101,9 @@ export async function POST(req: NextRequest) {
     );
 
     if (!student) {
-      return NextResponse.json(
-        { error: "ไม่พบข้อมูล หรือรหัสผ่านไม่ถูกต้อง" },
-        { status: 401 }
-      );
+      return res.status(401).json({
+        error: "ไม่พบข้อมูล หรือรหัสผ่านไม่ถูกต้อง",
+      });
     }
 
     const safeData = {
@@ -112,13 +118,14 @@ export async function POST(req: NextRequest) {
       note: student.note,
     };
 
-    return NextResponse.json({ student: safeData });
+    return res.status(200).json({
+      student: safeData,
+    });
   } catch (error) {
     console.error("Score API error:", error);
 
-    return NextResponse.json(
-      { error: "เกิดข้อผิดพลาดในการอ่านข้อมูลคะแนน" },
-      { status: 500 }
-    );
+    return res.status(500).json({
+      error: "เกิดข้อผิดพลาดในการอ่านข้อมูลคะแนน",
+    });
   }
 }
