@@ -90,7 +90,7 @@ export default function Home() {
                 value={studentId}
                 onChange={(e) => setStudentId(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
-                placeholder="เช่น 12119"
+                placeholder="เช่น 12345"
                 required
               />
             </div>
@@ -100,7 +100,7 @@ export default function Home() {
                 htmlFor="password"
                 className="mb-1 block text-sm font-medium text-slate-700"
               >
-                รหัสผ่าน / วันเดือนปีเกิด
+                รหัสผ่าน
               </label>
 
               <input
