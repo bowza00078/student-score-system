@@ -1,15 +1,47 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { google } from "googleapis";
 
+type Student = {
+  student_id: string;
+  class_id: string;
+  no: string;
+  fullname: string;
+  password: string;
+  active: string;
+};
+
+type Assessment = {
+  assessment_id: string;
+  name: string;
+  type: string;
+  max_score: string;
+  active: string;
+};
+
+type ScoreRecord = {
+  assessment_id: string;
+  student_id: string;
+  score: string;
+  updated_at: string;
+};
+
+type AssessmentClass = {
+  assessment_id: string;
+  class_id: string;
+};
+
 type ScoreItem = {
   label: string;
   value: string;
+  maxScore: string;
+  type: string;
 };
 
 type StudentResult = {
   student_id: string;
   no: string;
   fullname: string;
+  class_id: string;
   scores: ScoreItem[];
 };
 
@@ -32,17 +64,50 @@ function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function rowToObject<T>(
+  headers: string[],
+  row: string[]
+): T {
+  const item: Record<string, string> = {};
+
+  headers.forEach((header, index) => {
+    item[String(header).trim()] = normalizeText(row[index]);
+  });
+
+  return item as T;
+}
+
+async function getSheetData(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  range: string
+) {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
+
+  return response.data.values ?? [];
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  /*
+   * GET
+   * ใช้สำหรับทดสอบว่า API ทำงานหรือไม่
+   */
   if (req.method === "GET") {
     return res.status(200).json({
       status: "API is working",
-      message: "Dynamic score API route is available",
+      message: "Student score API is working",
     });
   }
 
+  /*
+   * รับเฉพาะ POST
+   */
   if (req.method !== "POST") {
     return res.status(405).json({
       error: "Method not allowed",
@@ -52,6 +117,9 @@ export default async function handler(
   try {
     const { studentId, password } = req.body;
 
+    /*
+     * ตรวจสอบว่ากรอกข้อมูลมาครบหรือไม่
+     */
     if (!studentId || !password) {
       return res.status(400).json({
         error: "กรุณากรอกเลขประจำตัวและรหัสผ่าน",
@@ -64,6 +132,9 @@ export default async function handler(
       throw new Error("Missing GOOGLE_SHEET_ID");
     }
 
+    /*
+     * เชื่อม Google Sheets
+     */
     const auth = getGoogleAuth();
 
     const sheets = google.sheets({
@@ -71,77 +142,208 @@ export default async function handler(
       auth,
     });
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "Scores!A1:ZZ",
-    });
+    /*
+     * อ่านข้อมูลจาก 4 Sheet ที่เกี่ยวข้อง
+     *
+     * Students
+     * Assessments
+     * AssessmentClasses
+     * Scores
+     *
+     * อ่านพร้อมกันเพื่อลดเวลา
+     */
+    const [
+      studentsRows,
+      assessmentsRows,
+      assessmentClassesRows,
+      scoresRows,
+    ] = await Promise.all([
+      getSheetData(
+        sheets,
+        spreadsheetId,
+        "Students!A1:F"
+      ),
+      getSheetData(
+        sheets,
+        spreadsheetId,
+        "Assessments!A1:E"
+      ),
+      getSheetData(
+        sheets,
+        spreadsheetId,
+        "AssessmentClasses!A1:B"
+      ),
+      getSheetData(
+        sheets,
+        spreadsheetId,
+        "Scores!A1:E"
+      ),
+    ]);
 
-    const rows = response.data.values;
-
-    if (!rows || rows.length < 2) {
+    /*
+     * ตรวจสอบว่ามีข้อมูลหรือไม่
+     */
+    if (studentsRows.length < 2) {
       return res.status(404).json({
-        error: "ยังไม่มีข้อมูลคะแนนในระบบ",
+        error: "ยังไม่มีข้อมูลนักเรียนในระบบ",
       });
     }
 
-    const headers = rows[0].map((header) => normalizeText(header));
-    const dataRows = rows.slice(1);
+    /*
+     * แปลง Students
+     */
+    const studentsHeaders = studentsRows[0].map(normalizeText);
 
-    const studentIdIndex = headers.indexOf("student_id");
-    const noIndex = headers.indexOf("no");
-    const fullnameIndex = headers.indexOf("fullname");
-    const passwordIndex = headers.indexOf("password");
-
-    if (
-      studentIdIndex === -1 ||
-      noIndex === -1 ||
-      fullnameIndex === -1 ||
-      passwordIndex === -1
-    ) {
-      return res.status(500).json({
-        error:
-          "หัวตารางไม่ถูกต้อง ต้องมี student_id, no, fullname และ password",
-      });
-    }
-
-    const foundRow = dataRows.find((row) => {
-      const rowStudentId = normalizeText(row[studentIdIndex]);
-      const rowPassword = normalizeText(row[passwordIndex]);
-
-      return (
-        rowStudentId === normalizeText(studentId) &&
-        rowPassword === normalizeText(password)
+    const students: Student[] = studentsRows
+      .slice(1)
+      .map((row) =>
+        rowToObject<Student>(
+          studentsHeaders,
+          row
+        )
       );
-    });
 
-    if (!foundRow) {
+    /*
+     * ค้นหานักเรียนจาก
+     * student_id + password
+     */
+    const student = students.find(
+      (item) =>
+        normalizeText(item.student_id) ===
+          normalizeText(studentId) &&
+        normalizeText(item.password) ===
+          normalizeText(password) &&
+        normalizeText(item.active).toUpperCase() ===
+          "TRUE"
+    );
+
+    if (!student) {
       return res.status(401).json({
         error: "ไม่พบข้อมูล หรือรหัสผ่านไม่ถูกต้อง",
       });
     }
 
-    const fixedColumns = new Set(["student_id", "no", "fullname", "password"]);
+    /*
+     * แปลง Assessments
+     */
+    const assessments: Assessment[] = [];
 
-    const scores: ScoreItem[] = headers
-      .map((header, index) => {
+    if (assessmentsRows.length >= 2) {
+      const headers = assessmentsRows[0].map(normalizeText);
+
+      assessments.push(
+        ...assessmentsRows
+          .slice(1)
+          .map((row) =>
+            rowToObject<Assessment>(
+              headers,
+              row
+            )
+          )
+          .filter(
+            (item) =>
+              normalizeText(item.active).toUpperCase() ===
+              "TRUE"
+          )
+      );
+    }
+
+    /*
+     * แปลง AssessmentClasses
+     */
+    const assessmentClasses: AssessmentClass[] = [];
+
+    if (assessmentClassesRows.length >= 2) {
+      const headers = assessmentClassesRows[0].map(normalizeText);
+
+      assessmentClasses.push(
+        ...assessmentClassesRows
+          .slice(1)
+          .map((row) =>
+            rowToObject<AssessmentClass>(
+              headers,
+              row
+            )
+          )
+      );
+    }
+
+    /*
+     * แปลง Scores
+     */
+    const scoreRecords: ScoreRecord[] = [];
+
+    if (scoresRows.length >= 2) {
+      const headers = scoresRows[0].map(normalizeText);
+
+      scoreRecords.push(
+        ...scoresRows
+          .slice(1)
+          .map((row) =>
+            rowToObject<ScoreRecord>(
+              headers,
+              row
+            )
+          )
+      );
+    }
+
+    /*
+     * หา assessment ที่เปิดใช้งาน
+     * และใช้กับห้องของนักเรียนคนนี้
+     */
+    const availableAssessmentIds = new Set(
+      assessmentClasses
+        .filter(
+          (item) =>
+            normalizeText(item.class_id) ===
+            normalizeText(student.class_id)
+        )
+        .map((item) =>
+          normalizeText(item.assessment_id)
+        )
+    );
+
+    /*
+     * สร้างรายการคะแนนของนักเรียน
+     */
+    const scores: ScoreItem[] = assessments
+      .filter((assessment) =>
+        availableAssessmentIds.has(
+          normalizeText(assessment.assessment_id)
+        )
+      )
+      .map((assessment) => {
+        const scoreRecord = scoreRecords.find(
+          (item) =>
+            normalizeText(item.assessment_id) ===
+              normalizeText(
+                assessment.assessment_id
+              ) &&
+            normalizeText(item.student_id) ===
+              normalizeText(student.student_id)
+        );
+
         return {
-          header,
-          index,
-        };
-      })
-      .filter((item) => item.header !== "")
-      .filter((item) => !fixedColumns.has(item.header))
-      .map((item) => {
-        return {
-          label: item.header,
-          value: normalizeText(foundRow[item.index]),
+          label: normalizeText(assessment.name),
+          value: scoreRecord
+            ? normalizeText(scoreRecord.score)
+            : "",
+          maxScore: normalizeText(
+            assessment.max_score
+          ),
+          type: normalizeText(assessment.type),
         };
       });
 
+    /*
+     * ข้อมูลที่ส่งกลับไปยังหน้าเว็บ
+     */
     const result: StudentResult = {
-      student_id: normalizeText(foundRow[studentIdIndex]),
-      no: normalizeText(foundRow[noIndex]),
-      fullname: normalizeText(foundRow[fullnameIndex]),
+      student_id: normalizeText(student.student_id),
+      no: normalizeText(student.no),
+      fullname: normalizeText(student.fullname),
+      class_id: normalizeText(student.class_id),
       scores,
     };
 
