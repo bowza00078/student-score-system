@@ -9,6 +9,8 @@ import {
   UserRound,
   BookOpen,
   CheckCircle2,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 
 type ScoreItem = {
@@ -25,6 +27,51 @@ type StudentScore = {
   class_id: string;
   scores: ScoreItem[];
 };
+
+function formatClassName(classId: string) {
+  const match = classId.trim().match(/^M(\d+)-(\d+)$/i);
+
+  if (match) {
+    return `ม.${match[1]}/${match[2]}`;
+  }
+
+  return classId;
+}
+
+function getScoreStatus(value: string, maxScore: string) {
+  const scoreValue = Number(value);
+  const max = Number(maxScore);
+
+  // ยังไม่มีคะแนน
+  if (
+    value === "" ||
+    !Number.isFinite(scoreValue) ||
+    !Number.isFinite(max) ||
+    max <= 0
+  ) {
+    return {
+      status: "ขาดสอบ",
+      box: "border-amber-100 bg-amber-50 text-amber-700",
+      icon: <AlertCircle size={24} strokeWidth={2} />,
+    };
+  }
+
+  // 50% ขึ้นไป = ผ่าน
+  if (scoreValue >= max * 0.5) {
+    return {
+      status: "ผ่าน",
+      box: "border-emerald-100 bg-emerald-50 text-emerald-700",
+      icon: <CheckCircle2 size={24} strokeWidth={2} />,
+    };
+  }
+
+  // ต่ำกว่า 50% = ไม่ผ่าน
+  return {
+    status: "ไม่ผ่าน",
+    box: "border-red-100 bg-red-50 text-red-600",
+    icon: <XCircle size={24} strokeWidth={2} />,
+  };
+}
 
 export default function Home() {
   const [studentId, setStudentId] = useState("");
@@ -104,6 +151,7 @@ export default function Home() {
                 <h1 className="text-sm font-bold text-blue-950 sm:text-base">
                   โรงเรียนเนินมะปรางศึกษาวิทยา
                 </h1>
+
                 <p className="mt-0.5 text-[10px] tracking-wide text-blue-600 sm:text-xs">
                   STUDENT SCORE PORTAL
                 </p>
@@ -116,6 +164,7 @@ export default function Home() {
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
             >
               <LogOut size={17} />
+
               <span className="hidden sm:inline">ออกจากระบบ</span>
             </button>
           </div>
@@ -141,10 +190,10 @@ export default function Home() {
           {/* Student information */}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm text-slate-500">นักเรียน</p>
 
-                <h3 className="mt-1 text-2xl font-bold text-slate-900">
+                <h3 className="mt-1 break-words text-2xl font-bold text-slate-900">
                   {student.fullname}
                 </h3>
 
@@ -158,13 +207,15 @@ export default function Home() {
 
                   <span>
                     เลขที่{" "}
-                    <strong className="text-slate-700">{student.no}</strong>
+                    <strong className="text-slate-700">
+                      {student.no}
+                    </strong>
                   </span>
 
                   <span>
                     ห้อง{" "}
                     <strong className="text-slate-700">
-                      {student.class_id}
+                      {formatClassName(student.class_id)}
                     </strong>
                   </span>
                 </div>
@@ -201,7 +252,15 @@ export default function Home() {
             </div>
 
             {student.scores.length > 0 ? (
-              <div className="space-y-4">
+              /*
+               * =========================
+               * Score Grid
+               *
+               * มือถือ  : 1 ช่องต่อแถว
+               * md ขึ้นไป : 2 ช่องต่อแถว
+               * =========================
+               */
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {student.scores.map((score, index) => {
                   const scoreValue = Number(score.value);
                   const maxScore = Number(score.maxScore);
@@ -212,52 +271,76 @@ export default function Home() {
                     maxScore > 0
                       ? Math.min(
                           100,
-                          Math.max(0, (scoreValue / maxScore) * 100)
+                          Math.max(
+                            0,
+                            (scoreValue / maxScore) * 100
+                          )
                         )
                       : 0;
+
+                  const statusStyle = getScoreStatus(
+                    score.value,
+                    score.maxScore
+                  );
 
                   return (
                     <div
                       key={`${score.label}-${index}`}
-                      className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md sm:p-7"
+                      className="flex min-w-0 flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md sm:p-6"
                     >
-                      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2
+                      {/* Score title + score */}
+                      <div className="flex min-w-0 items-start justify-between gap-4">
+                        {/* Title */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start gap-2">
+                            <BookOpen
                               size={19}
                               strokeWidth={2}
-                              className="shrink-0 text-blue-600"
+                              className="mt-1 shrink-0 text-blue-600"
                             />
 
-                            <h4 className="truncate text-lg font-bold text-slate-900">
+                            <h4 className="min-w-0 break-words whitespace-normal text-lg font-bold leading-snug text-slate-900">
                               {score.label}
                             </h4>
                           </div>
 
                           {score.type && (
-                            <p className="mt-1 pl-7 text-sm text-slate-500">
+                            <p className="mt-2 break-words whitespace-normal pl-7 text-sm leading-relaxed text-slate-500">
                               {score.type}
                             </p>
                           )}
                         </div>
 
-                        <div className="sm:text-right">
-                          <div className="text-3xl font-bold text-blue-800">
-                            {score.value || "-"}
-                            <span className="ml-1 text-base font-medium text-slate-400">
+                        {/* Score */}
+                        <div className="shrink-0 text-right">
+                          <div className="flex items-baseline justify-end gap-1">
+                            <span className="text-5xl font-bold leading-none tracking-tight text-blue-800 sm:text-6xl">
+                              {score.value || "-"}
+                            </span>
+
+                            <span className="text-lg font-medium text-slate-400 sm:text-xl">
                               / {score.maxScore || "-"}
                             </span>
                           </div>
 
-                          {score.value && score.maxScore && (
-                            <p className="mt-1 text-sm font-medium text-slate-500">
-                              {percentage.toFixed(0)}%
-                            </p>
-                          )}
+                          <p className="mt-2 text-xs font-medium text-slate-400 sm:text-sm">
+                            คะแนน
+                          </p>
                         </div>
                       </div>
 
+                      {/* Status */}
+                      <div className="mt-6">
+                        <div
+                          className={`inline-flex items-center gap-3 rounded-2xl border px-5 py-3 text-lg font-bold ${statusStyle.box}`}
+                        >
+                          {statusStyle.icon}
+
+                          <span>{statusStyle.status}</span>
+                        </div>
+                      </div>
+
+                      {/* Progress */}
                       {score.value && score.maxScore && (
                         <div className="mt-6">
                           <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
@@ -369,7 +452,7 @@ export default function Home() {
                     type="text"
                     value={studentId}
                     onChange={(e) => setStudentId(e.target.value)}
-                    placeholder="เช่น 12119"
+                    placeholder="เช่น 12345"
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 py-4 pl-12 pr-4 text-base text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
                     required
                   />
