@@ -1207,16 +1207,14 @@ export default function SubmitPage() {
                               )}
                             </div>
                           ) : (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                              <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                                <Clock3
-                                  size={
-                                    18
-                                  }
-                                />
-                                ยังไม่ส่ง
-                              </div>
-                            </div>
+                            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3.5">
+  <div className="flex items-center gap-2 text-base font-semibold text-red-700">
+    <Clock3
+      size={20}
+    />
+    ยังไม่ได้ส่ง
+  </div>
+</div>
                           )}
                         </div>
                       </button>
