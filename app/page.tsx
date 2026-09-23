@@ -1,16 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  AlertCircle,
   ArrowRight,
-  GraduationCap,
-  LockKeyhole,
-  LogOut,
-  UserRound,
+  BarChart3,
   BookOpen,
   CheckCircle2,
+  GraduationCap,
+  LogOut,
+  Upload,
+  UserRound,
   XCircle,
-  AlertCircle,
 } from "lucide-react";
 
 type ScoreItem = {
@@ -28,8 +34,15 @@ type StudentScore = {
   scores: ScoreItem[];
 };
 
-function formatClassName(classId: string) {
-  const match = classId.trim().match(/^M(\d+)-(\d+)$/i);
+function formatClassName(
+  classId: string
+) {
+  const match =
+    classId
+      .trim()
+      .match(
+        /^M(\d+)-(\d+)$/i
+      );
 
   if (match) {
     return `ม.${match[1]}/${match[2]}`;
@@ -38,184 +51,478 @@ function formatClassName(classId: string) {
   return classId;
 }
 
-function getScoreStatus(value: string, maxScore: string) {
-  const scoreValue = Number(value);
-  const max = Number(maxScore);
+function getScoreStatus(
+  value: string,
+  maxScore: string
+) {
+  const scoreValue =
+    Number(value);
 
-  // ยังไม่มีคะแนน
+  const max =
+    Number(maxScore);
+
   if (
     value === "" ||
-    !Number.isFinite(scoreValue) ||
+    !Number.isFinite(
+      scoreValue
+    ) ||
     !Number.isFinite(max) ||
     max <= 0
   ) {
     return {
-      status: "ขาดสอบ",
-      box: "border-amber-100 bg-amber-50 text-amber-700",
-      icon: <AlertCircle size={24} strokeWidth={2} />,
+      status:
+        "ยังไม่มีคะแนน",
+
+      box:
+        "border-amber-100 bg-amber-50 text-amber-700",
+
+      icon: (
+        <AlertCircle
+          size={24}
+          strokeWidth={2}
+        />
+      ),
     };
   }
 
-  // 50% ขึ้นไป = ผ่าน
-  if (scoreValue >= max * 0.5) {
+  if (
+    scoreValue >=
+    max * 0.5
+  ) {
     return {
       status: "ผ่าน",
-      box: "border-emerald-100 bg-emerald-50 text-emerald-700",
-      icon: <CheckCircle2 size={24} strokeWidth={2} />,
+
+      box:
+        "border-emerald-100 bg-emerald-50 text-emerald-700",
+
+      icon: (
+        <CheckCircle2
+          size={24}
+          strokeWidth={2}
+        />
+      ),
     };
   }
 
-  // ต่ำกว่า 50% = ไม่ผ่าน
   return {
     status: "ไม่ผ่าน",
-    box: "border-red-100 bg-red-50 text-red-600",
-    icon: <XCircle size={24} strokeWidth={2} />,
+
+    box:
+      "border-red-100 bg-red-50 text-red-600",
+
+    icon: (
+      <XCircle
+        size={24}
+        strokeWidth={2}
+      />
+    ),
   };
 }
 
 export default function Home() {
-  const [studentId, setStudentId] = useState("");
-  const [password, setPassword] = useState("");
-  const [student, setStudent] = useState<StudentScore | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [
+    studentId,
+    setStudentId,
+  ] = useState("");
 
-  async function handleCheckScore(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  const [
+    password,
+    setPassword,
+  ] = useState("");
 
-    setError("");
-    setStudent(null);
-    setLoading(true);
+  const [
+    student,
+    setStudent,
+  ] =
+    useState<StudentScore | null>(
+      null
+    );
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    checkingSession,
+    setCheckingSession,
+  ] = useState(true);
+
+  /*
+   * ========================================
+   * ตรวจ Session เมื่อเปิดหน้า
+   * ========================================
+   */
+
+  useEffect(() => {
+    loadExistingSession();
+  }, []);
+
+  async function loadExistingSession() {
+    setCheckingSession(true);
 
     try {
-      const response = await fetch("/api/score", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          studentId: studentId.trim(),
-          password: password.trim(),
-        }),
-      });
+      /*
+       * GET /api/score
+       * จะอ่าน student_id
+       * จาก Session Cookie
+       */
 
-      const data: { student?: StudentScore; error?: string } =
+      const response =
+        await fetch(
+          "/api/score",
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
+
+      /*
+       * 401 = ยังไม่ได้ Login
+       * ไม่ถือว่าเป็น Error
+       * ให้แสดงหน้า Login ตามปกติ
+       */
+
+      if (
+        response.status ===
+        401
+      ) {
+        setStudent(null);
+        return;
+      }
+
+      const data: {
+        student?: StudentScore;
+        error?: string;
+      } =
         await response.json();
 
       if (!response.ok) {
-        setError(data.error || "ไม่สามารถตรวจสอบคะแนนได้");
+        setStudent(null);
+
+        setError(
+          data.error ||
+            "ไม่สามารถตรวจสอบข้อมูลได้"
+        );
+
+        return;
+      }
+
+      if (data.student) {
+        setStudent(
+          data.student
+        );
+
+        setError("");
+      }
+    } catch {
+      setStudent(null);
+
+      setError(
+        "ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง"
+      );
+    } finally {
+      setCheckingSession(
+        false
+      );
+    }
+  }
+
+  /*
+   * ========================================
+   * Login ครั้งแรก
+   * ========================================
+   */
+
+  async function handleCheckScore(
+    e: React.FormEvent<HTMLFormElement>
+  ) {
+    e.preventDefault();
+
+    setError("");
+    setLoading(true);
+
+    try {
+      /*
+       * POST /api/score
+       * ตรวจ studentId + password
+       * และสร้าง Session Cookie
+       */
+
+      const response =
+        await fetch(
+          "/api/score",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                studentId:
+                  studentId.trim(),
+
+                password:
+                  password.trim(),
+              }),
+          }
+        );
+
+      const data: {
+        student?: StudentScore;
+        error?: string;
+      } =
+        await response.json();
+
+      if (!response.ok) {
+        setStudent(null);
+
+        setError(
+          data.error ||
+            "ไม่สามารถตรวจสอบข้อมูลได้"
+        );
+
         return;
       }
 
       if (!data.student) {
-        setError("ไม่พบข้อมูลคะแนนของนักเรียน");
+        setStudent(null);
+
+        setError(
+          "ไม่พบข้อมูลนักเรียน"
+        );
+
         return;
       }
 
-      setStudent(data.student);
+      setStudent(
+        data.student
+      );
+
+      /*
+       * ไม่จำเป็นต้องเก็บ Password
+       * หลัง Login สำเร็จ
+       */
+
+      setPassword("");
     } catch {
-      setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+      setError(
+        "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง"
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  function handleLogout() {
-    setStudent(null);
-    setStudentId("");
-    setPassword("");
-    setError("");
+  /*
+   * ========================================
+   * Logout
+   * ========================================
+   */
+
+  async function handleLogout() {
+    try {
+      /*
+       * ลบ Session Cookie
+       */
+
+      await fetch(
+        "/api/auth/session",
+        {
+          method: "DELETE",
+        }
+      );
+    } finally {
+      setStudent(null);
+      setStudentId("");
+      setPassword("");
+      setError("");
+    }
   }
 
   /*
-   * =========================
-   * หน้าแสดงผลคะแนน
-   * =========================
+   * ========================================
+   * กำลังตรวจ Session
+   * ========================================
    */
+
+  if (checkingSession) {
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-800">
+        <div className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
+          <div className="w-full text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
+              <GraduationCap
+                size={34}
+                strokeWidth={1.8}
+                className="text-blue-700"
+              />
+            </div>
+
+            <p className="mt-5 text-sm font-medium text-slate-600">
+              กำลังตรวจสอบการเข้าสู่ระบบ...
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /*
+   * ========================================
+   * หน้าผลคะแนน
+   * ========================================
+   */
+
   if (student) {
     return (
       <main className="min-h-screen bg-slate-50 text-slate-800">
         {/* Header */}
+
         <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-5 sm:px-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50">
-                <GraduationCap
-                  size={25}
-                  strokeWidth={1.8}
-                  className="text-blue-800"
-                />
+          <div className="mx-auto max-w-5xl px-5 sm:px-8">
+            <div className="flex items-center justify-between py-4 sm:py-5">
+              {/* School */}
+
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50">
+                  <GraduationCap
+                    size={25}
+                    strokeWidth={
+                      1.8
+                    }
+                    className="text-blue-800"
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <h1 className="truncate text-sm font-bold text-blue-950 sm:text-base">
+                    โรงเรียนเนินมะปรางศึกษาวิทยา
+                  </h1>
+
+                  <p className="mt-0.5 text-[10px] tracking-wide text-blue-600 sm:text-xs">
+                    STUDENT SCORE
+                    PORTAL
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <h1 className="text-sm font-bold text-blue-950 sm:text-base">
-                  โรงเรียนเนินมะปรางศึกษาวิทยา
-                </h1>
+              {/* Navigation */}
 
-                <p className="mt-0.5 text-[10px] tracking-wide text-blue-600 sm:text-xs">
-                  STUDENT SCORE PORTAL
-                </p>
-              </div>
+              <nav className="flex items-center gap-1 sm:gap-2">
+                <Link
+                  href="/"
+                  className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 sm:px-4"
+                >
+                  <BarChart3
+                    size={17}
+                  />
+
+                  <span className="hidden sm:inline">
+                    คะแนนของฉัน
+                  </span>
+                </Link>
+
+                <Link
+                  href="/submit"
+                  className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-blue-700 sm:px-4"
+                >
+                  <Upload
+                    size={17}
+                  />
+
+                  <span className="hidden sm:inline">
+                    ส่งงาน
+                  </span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleLogout
+                  }
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 sm:px-4"
+                >
+                  <LogOut
+                    size={17}
+                  />
+
+                  <span className="hidden sm:inline">
+                    ออกจากระบบ
+                  </span>
+                </button>
+              </nav>
             </div>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-            >
-              <LogOut size={17} />
-
-              <span className="hidden sm:inline">ออกจากระบบ</span>
-            </button>
           </div>
         </header>
 
         {/* Main */}
+
         <section className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
           {/* Page heading */}
+
           <div className="mb-7">
             <p className="text-sm font-medium tracking-wide text-blue-600">
               STUDENT SCORE
             </p>
 
             <h2 className="mt-2 text-3xl font-bold tracking-tight text-blue-950 sm:text-4xl">
-              ผลคะแนนของนักเรียน
+              ผลคะแนนของฉัน
             </h2>
 
             <p className="mt-2 text-sm text-slate-500">
-              ตรวจสอบผลคะแนนของคุณจากรายการประเมินที่เปิดใช้งาน
+              ตรวจสอบผลคะแนนและรายการประเมินของคุณ
             </p>
           </div>
 
           {/* Student information */}
+
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <p className="text-sm text-slate-500">นักเรียน</p>
+                <p className="text-sm text-slate-500">
+                  นักเรียน
+                </p>
 
                 <h3 className="mt-1 break-words text-2xl font-bold text-slate-900">
-                  {student.fullname}
+                  {
+                    student.fullname
+                  }
                 </h3>
 
                 <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
                   <span>
                     เลขประจำตัว{" "}
                     <strong className="text-slate-700">
-                      {student.student_id}
+                      {
+                        student.student_id
+                      }
                     </strong>
                   </span>
 
                   <span>
                     เลขที่{" "}
                     <strong className="text-slate-700">
-                      {student.no}
+                      {
+                        student.no
+                      }
                     </strong>
                   </span>
 
                   <span>
                     ห้อง{" "}
                     <strong className="text-slate-700">
-                      {formatClassName(student.class_id)}
+                      {formatClassName(
+                        student.class_id
+                      )}
                     </strong>
                   </span>
                 </div>
@@ -224,7 +531,9 @@ export default function Home() {
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50">
                 <UserRound
                   size={28}
-                  strokeWidth={1.7}
+                  strokeWidth={
+                    1.7
+                  }
                   className="text-blue-700"
                 />
               </div>
@@ -232,6 +541,7 @@ export default function Home() {
           </div>
 
           {/* Score section */}
+
           <div className="mt-7">
             <div className="mb-4 flex items-center justify-between">
               <div>
@@ -240,147 +550,155 @@ export default function Home() {
                 </h3>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  คะแนนจากแบบทดสอบและการประเมิน
+                  คะแนนตามรายการประเมินที่บันทึกไว้
                 </p>
               </div>
 
               <BookOpen
                 size={23}
-                strokeWidth={1.8}
+                strokeWidth={
+                  1.8
+                }
                 className="text-blue-600"
               />
             </div>
 
-            {student.scores.length > 0 ? (
-              /*
-               * =========================
-               * Score Grid
-               *
-               * มือถือ  : 1 ช่องต่อแถว
-               * md ขึ้นไป : 2 ช่องต่อแถว
-               * =========================
-               */
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {student.scores.map((score, index) => {
-                  const scoreValue = Number(score.value);
-                  const maxScore = Number(score.maxScore);
-
-                  const percentage =
-                    Number.isFinite(scoreValue) &&
-                    Number.isFinite(maxScore) &&
-                    maxScore > 0
-                      ? Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            (scoreValue / maxScore) * 100
-                          )
-                        )
-                      : 0;
-
-                  const statusStyle = getScoreStatus(
-                    score.value,
-                    score.maxScore
-                  );
-
-                  return (
-                    <div
-                      key={`${score.label}-${index}`}
-                      className="flex min-w-0 flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md sm:p-6"
-                    >
-                      {/* Score title + score */}
-                      <div className="flex min-w-0 items-start justify-between gap-4">
-                        {/* Title */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start gap-2">
-                            <BookOpen
-                              size={19}
-                              strokeWidth={2}
-                              className="mt-1 shrink-0 text-blue-600"
-                            />
-
-                            <h4 className="min-w-0 break-words whitespace-normal text-lg font-bold leading-snug text-slate-900">
-                              {score.label}
-                            </h4>
-                          </div>
-
-                          {score.type && (
-                            <p className="mt-2 break-words whitespace-normal pl-7 text-sm leading-relaxed text-slate-500">
-                              {score.type}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Score */}
-                        <div className="shrink-0 text-right">
-                          <div className="flex items-baseline justify-end gap-1">
-                            <span className="text-5xl font-bold leading-none tracking-tight text-blue-800 sm:text-6xl">
-                              {score.value || "-"}
-                            </span>
-
-                            <span className="text-lg font-medium text-slate-400 sm:text-xl">
-                              / {score.maxScore || "-"}
-                            </span>
-                          </div>
-
-                          <p className="mt-2 text-xs font-medium text-slate-400 sm:text-sm">
-                            คะแนน
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Status */}
-                      <div className="mt-6">
-                        <div
-                          className={`inline-flex items-center gap-3 rounded-2xl border px-5 py-3 text-lg font-bold ${statusStyle.box}`}
-                        >
-                          {statusStyle.icon}
-
-                          <span>{statusStyle.status}</span>
-                        </div>
-                      </div>
-
-                      {/* Progress */}
-                      {score.value && score.maxScore && (
-                        <div className="mt-6">
-                          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-blue-600 transition-all duration-500"
-                              style={{
-                                width: `${percentage}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-                <BookOpen
+            {student.scores
+              .length === 0 ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+                <AlertCircle
                   size={34}
-                  strokeWidth={1.6}
                   className="mx-auto text-slate-300"
                 />
 
-                <h4 className="mt-4 font-semibold text-slate-700">
-                  ยังไม่มีรายการคะแนน
-                </h4>
+                <p className="mt-4 font-medium text-slate-700">
+                  ยังไม่มีข้อมูลคะแนน
+                </p>
 
                 <p className="mt-1 text-sm text-slate-400">
-                  ขณะนี้ยังไม่มีคะแนนที่เปิดให้ตรวจสอบ
+                  กรุณาตรวจสอบอีกครั้งภายหลัง
                 </p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {student.scores.map(
+                  (
+                    score,
+                    index
+                  ) => {
+                    const status =
+                      getScoreStatus(
+                        score.value,
+                        score.maxScore
+                      );
+
+                    return (
+                      <div
+                        key={`${score.label}-${index}`}
+                        className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                      >
+                        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm text-slate-500">
+                              รายการประเมิน
+                            </p>
+
+                            <h4 className="mt-1 break-words text-lg font-bold text-slate-900">
+                              {
+                                score.label
+                              }
+                            </h4>
+
+                            {score.type && (
+                              <p className="mt-1 text-xs text-slate-400">
+                                {
+                                  score.type
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-xs text-slate-400">
+                                คะแนน
+                              </p>
+
+                              <p className="mt-0.5 text-2xl font-bold text-slate-900">
+                                {score.value ===
+                                ""
+                                  ? "-"
+                                  : score.value}
+
+                                <span className="ml-1 text-sm font-medium text-slate-400">
+                                  /{" "}
+                                  {
+                                    score.maxScore
+                                  }
+                                </span>
+                              </p>
+                            </div>
+
+                            <div
+                              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border ${status.box}`}
+                            >
+                              {
+                                status.icon
+                              }
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`mt-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${status.box}`}
+                        >
+                          {
+                            status.icon
+                          }
+
+                          <span>
+                            {
+                              status.status
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
               </div>
             )}
           </div>
 
-          {/* Footer */}
-          <div className="mt-10 text-center">
-            <p className="text-xs text-slate-400">
-              โรงเรียนเนินมะปรางศึกษาวิทยา • Student Score Portal
-            </p>
+          {/* Quick navigation */}
+
+          <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-600">
+                  SUBMISSION
+                </p>
+
+                <h3 className="mt-1 text-xl font-bold text-slate-900">
+                  มีงานที่ต้องส่ง?
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  ไปยังหน้าส่งงานเพื่อดูงานที่เปิดอยู่และตรวจสอบสถานะการส่ง
+                </p>
+              </div>
+
+              <Link
+                href="/submit"
+                className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-800"
+              >
+                ไปหน้าส่งงาน
+
+                <ArrowRight
+                  size={17}
+                />
+              </Link>
+            </div>
           </div>
         </section>
       </main>
@@ -388,136 +706,141 @@ export default function Home() {
   }
 
   /*
-   * =========================
-   * หน้า Login
-   * =========================
+   * ========================================
+   * Login Screen
+   * ========================================
    */
+
   return (
-    <main className="min-h-screen bg-slate-50 px-5 py-10 sm:px-8">
-      <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
-        <div className="w-full max-w-md">
-          {/* Logo */}
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      <div className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
+        <div className="w-full">
           <div className="mb-8 text-center">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-50 shadow-sm ring-1 ring-blue-100">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
               <GraduationCap
-                size={40}
-                strokeWidth={1.7}
-                className="text-blue-800"
+                size={34}
+                strokeWidth={1.8}
+                className="text-blue-700"
               />
             </div>
 
-            <h1 className="mt-6 text-2xl font-bold tracking-tight text-blue-950 sm:text-3xl">
-              โรงเรียนเนินมะปรางศึกษาวิทยา
+            <h1 className="mt-5 text-2xl font-bold text-blue-950">
+              ผลคะแนนนักเรียน
             </h1>
 
-            <p className="mt-2 text-xs tracking-[0.18em] text-blue-600">
+            <p className="mt-2 text-sm text-slate-500">
               STUDENT SCORE PORTAL
+            </p>
+
+            <p className="mt-1 text-xs text-slate-400">
+              โรงเรียนเนินมะปรางศึกษาวิทยา
             </p>
           </div>
 
-          {/* Login Card */}
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[0_20px_60px_-20px_rgba(15,23,42,0.15)] sm:p-9">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold tracking-tight text-blue-950">
-                เข้าสู่ระบบ
-              </h2>
+          <form
+            onSubmit={
+              handleCheckScore
+            }
+            className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+          >
+            <div>
+              <label className="text-sm font-medium text-slate-700">
+                รหัสนักเรียน
+              </label>
 
-              <p className="mt-2 text-sm text-slate-500">
-                กรุณากรอกข้อมูลเพื่อดูคะแนนของคุณ
-              </p>
+              <div className="relative mt-2">
+                <UserRound
+                  size={19}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+
+                <input
+                  type="text"
+                  value={
+                    studentId
+                  }
+                  onChange={(
+                    e
+                  ) =>
+                    setStudentId(
+                      e.target
+                        .value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="กรอกรหัสนักเรียน"
+                  autoComplete="username"
+                  required
+                />
+              </div>
             </div>
 
-            <form
-              onSubmit={handleCheckScore}
-              className="mt-8 space-y-5"
-            >
-              {/* Student ID */}
-              <div>
-                <label
-                  htmlFor="studentId"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
-                >
-                  เลขประจำตัวนักเรียน
-                </label>
+            <div className="mt-5">
+              <label className="text-sm font-medium text-slate-700">
+                รหัสผ่าน
+              </label>
 
-                <div className="relative">
-                  <UserRound
-                    size={20}
-                    strokeWidth={1.8}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
+              <div className="relative mt-2">
+                <LogOut
+                  size={19}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 rotate-180 text-slate-400"
+                />
 
-                  <input
-                    id="studentId"
-                    type="text"
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
-                    placeholder="เช่น 12345"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-4 pl-12 pr-4 text-base text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                    required
-                  />
-                </div>
+                <input
+                  type="password"
+                  value={
+                    password
+                  }
+                  onChange={(
+                    e
+                  ) =>
+                    setPassword(
+                      e.target
+                        .value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="กรอกรหัสผ่าน"
+                  autoComplete="current-password"
+                  required
+                />
               </div>
+            </div>
 
-              {/* Password */}
-              <div>
-                <label
-                  htmlFor="password"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
-                >
-                  รหัสผ่าน
-                </label>
+            {error && (
+              <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <XCircle
+                  size={19}
+                  className="mt-0.5 shrink-0"
+                />
 
-                <div className="relative">
-                  <LockKeyhole
-                    size={20}
-                    strokeWidth={1.8}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-
-                  <input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="รหัสผ่าน"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-4 pl-12 pr-4 text-base text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Error */}
-              {error && (
-                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                <span>
                   {error}
-                </div>
+                </span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={
+                loading
+              }
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading
+                ? "กำลังตรวจสอบ..."
+                : "เข้าสู่ระบบ"}
+
+              {!loading && (
+                <ArrowRight
+                  size={17}
+                />
               )}
+            </button>
+          </form>
 
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="group flex w-full items-center justify-center gap-3 rounded-xl bg-blue-800 px-5 py-4 text-base font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:bg-blue-900 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? (
-                  "กำลังตรวจสอบ..."
-                ) : (
-                  <>
-                    เข้าสู่ระบบ
-
-                    <ArrowRight
-                      size={21}
-                      className="transition-transform group-hover:translate-x-1"
-                    />
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          <p className="mt-6 text-center text-xs text-slate-400">
-            สำหรับนักเรียนโรงเรียนเนินมะปรางศึกษาวิทยาเท่านั้น
+          <p className="mt-5 text-center text-xs text-slate-400">
+            กรุณาใช้รหัสนักเรียนและรหัสผ่านที่โรงเรียนกำหนด
           </p>
         </div>
       </div>

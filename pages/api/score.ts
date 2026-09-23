@@ -1,5 +1,16 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+import type {
+  NextApiRequest,
+  NextApiResponse,
+} from "next";
+
 import { google } from "googleapis";
+
+import {
+  createSessionToken,
+  getSessionToken,
+  setSessionCookie,
+  verifySessionToken,
+} from "../../lib/session";
 
 type Student = {
   student_id: string;
@@ -45,191 +56,386 @@ type StudentResult = {
   scores: ScoreItem[];
 };
 
+/*
+ * ==========================================
+ * Google Sheets Authentication
+ * ==========================================
+ */
+
 function getGoogleAuth() {
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const clientEmail =
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+
+  const privateKey =
+    process.env.GOOGLE_PRIVATE_KEY?.replace(
+      /\\n/g,
+      "\n"
+    );
 
   if (!clientEmail || !privateKey) {
-    throw new Error("Missing Google service account credentials");
+    throw new Error(
+      "Missing Google service account credentials"
+    );
   }
 
   return new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    scopes: [
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
+    ],
   });
 }
 
-function normalizeText(value: unknown) {
-  return String(value ?? "").trim();
+/*
+ * ==========================================
+ * Helpers
+ * ==========================================
+ */
+
+function normalizeText(
+  value: unknown
+) {
+  return String(
+    value ?? ""
+  ).trim();
 }
 
 function rowToObject<T>(
   headers: string[],
   row: string[]
 ): T {
-  const item: Record<string, string> = {};
+  const item: Record<
+    string,
+    string
+  > = {};
 
-  headers.forEach((header, index) => {
-    item[String(header).trim()] = normalizeText(row[index]);
-  });
+  headers.forEach(
+    (header, index) => {
+      item[
+        String(
+          header
+        ).trim()
+      ] = normalizeText(
+        row[index]
+      );
+    }
+  );
 
   return item as T;
 }
 
 async function getSheetData(
-  sheets: ReturnType<typeof google.sheets>,
+  sheets: ReturnType<
+    typeof google.sheets
+  >,
   spreadsheetId: string,
   range: string
 ) {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range,
-  });
+  const response =
+    await sheets.spreadsheets.values.get(
+      {
+        spreadsheetId,
+        range,
+      }
+    );
 
-  return response.data.values ?? [];
+  return (
+    response.data.values ??
+    []
+  );
 }
+
+/*
+ * ==========================================
+ * API
+ * ==========================================
+ */
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
   /*
-   * GET
-   * ใช้สำหรับทดสอบว่า API ทำงานหรือไม่
+   * รับเฉพาะ GET และ POST
+   *
+   * GET:
+   * โหลดคะแนนจาก Session
+   *
+   * POST:
+   * Login ด้วย studentId + password
    */
-  if (req.method === "GET") {
-    return res.status(200).json({
-      status: "API is working",
-      message: "Student score API is working",
-    });
-  }
 
-  /*
-   * รับเฉพาะ POST
-   */
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Method not allowed",
-    });
+  if (
+    req.method !== "GET" &&
+    req.method !== "POST"
+  ) {
+    res.setHeader(
+      "Allow",
+      ["GET", "POST"]
+    );
+
+    return res
+      .status(405)
+      .json({
+        error:
+          "Method not allowed",
+      });
   }
 
   try {
-    const { studentId, password } = req.body;
-
-    /*
-     * ตรวจสอบว่ากรอกข้อมูลมาครบหรือไม่
-     */
-    if (!studentId || !password) {
-      return res.status(400).json({
-        error: "กรุณากรอกเลขประจำตัวและรหัสผ่าน",
-      });
-    }
-
-    const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+    const spreadsheetId =
+      process.env
+        .GOOGLE_SHEET_ID;
 
     if (!spreadsheetId) {
-      throw new Error("Missing GOOGLE_SHEET_ID");
+      throw new Error(
+        "Missing GOOGLE_SHEET_ID"
+      );
     }
 
     /*
-     * เชื่อม Google Sheets
+     * ======================================
+     * 1. ระบุตัวนักเรียน
+     * ======================================
      */
-    const auth = getGoogleAuth();
 
-    const sheets = google.sheets({
-      version: "v4",
-      auth,
-    });
+    let loginStudentId = "";
+    let loginPassword = "";
+    let loginWithPassword =
+      false;
+
+    if (
+      req.method === "POST"
+    ) {
+      /*
+       * Login ครั้งแรก
+       */
+
+      loginStudentId =
+        normalizeText(
+          req.body?.studentId
+        );
+
+      loginPassword =
+        normalizeText(
+          req.body?.password
+        );
+
+      if (
+        !loginStudentId ||
+        !loginPassword
+      ) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "กรุณากรอกรหัสนักเรียนและรหัสผ่าน",
+          });
+      }
+
+      loginWithPassword =
+        true;
+    } else {
+      /*
+       * GET
+       * ใช้ Session เดิม
+       */
+
+      const sessionToken =
+        getSessionToken(
+          req.headers.cookie
+        );
+
+      if (!sessionToken) {
+        return res
+          .status(401)
+          .json({
+            error:
+              "กรุณาเข้าสู่ระบบก่อน",
+          });
+      }
+
+      const sessionStudent =
+        verifySessionToken(
+          sessionToken
+        );
+
+      if (!sessionStudent) {
+        return res
+          .status(401)
+          .json({
+            error:
+              "Session หมดอายุ กรุณาเข้าสู่ระบบใหม่",
+          });
+      }
+
+      loginStudentId =
+        normalizeText(
+          sessionStudent.student_id
+        );
+    }
 
     /*
-     * อ่านข้อมูลจาก 4 Sheet ที่เกี่ยวข้อง
-     *
-     * Students
-     * Assessments
-     * AssessmentClasses
-     * Scores
-     *
-     * อ่านพร้อมกันเพื่อลดเวลา
+     * ======================================
+     * 2. เชื่อม Google Sheets
+     * ======================================
      */
+
+    const auth =
+      getGoogleAuth();
+
+    const sheets =
+      google.sheets({
+        version: "v4",
+        auth,
+      });
+
+    /*
+     * อ่านข้อมูล 4 Sheet พร้อมกัน
+     */
+
     const [
       studentsRows,
       assessmentsRows,
       assessmentClassesRows,
       scoresRows,
-    ] = await Promise.all([
-      getSheetData(
-        sheets,
-        spreadsheetId,
-        "Students!A1:F"
-      ),
-      getSheetData(
-        sheets,
-        spreadsheetId,
-        "Assessments!A1:E"
-      ),
-      getSheetData(
-        sheets,
-        spreadsheetId,
-        "AssessmentClasses!A1:B"
-      ),
-      getSheetData(
-        sheets,
-        spreadsheetId,
-        "Scores!A1:E"
-      ),
-    ]);
+    ] =
+      await Promise.all([
+        getSheetData(
+          sheets,
+          spreadsheetId,
+          "Students!A1:F"
+        ),
+
+        getSheetData(
+          sheets,
+          spreadsheetId,
+          "Assessments!A1:E"
+        ),
+
+        getSheetData(
+          sheets,
+          spreadsheetId,
+          "AssessmentClasses!A1:B"
+        ),
+
+        getSheetData(
+          sheets,
+          spreadsheetId,
+          "Scores!A1:E"
+        ),
+      ]);
 
     /*
-     * ตรวจสอบว่ามีข้อมูลหรือไม่
+     * ======================================
+     * 3. ตรวจข้อมูลนักเรียน
+     * ======================================
      */
-    if (studentsRows.length < 2) {
-      return res.status(404).json({
-        error: "ยังไม่มีข้อมูลนักเรียนในระบบ",
-      });
+
+    if (
+      studentsRows.length <
+      2
+    ) {
+      return res
+        .status(404)
+        .json({
+          error:
+            "ยังไม่มีข้อมูลนักเรียนในระบบ",
+        });
     }
 
-    /*
-     * แปลง Students
-     */
-    const studentsHeaders = studentsRows[0].map(normalizeText);
-
-    const students: Student[] = studentsRows
-      .slice(1)
-      .map((row) =>
-        rowToObject<Student>(
-          studentsHeaders,
-          row
-        )
+    const studentsHeaders =
+      studentsRows[0].map(
+        normalizeText
       );
 
+    const students:
+      Student[] =
+      studentsRows
+        .slice(1)
+        .map((row) =>
+          rowToObject<Student>(
+            studentsHeaders,
+            row
+          )
+        );
+
     /*
-     * ค้นหานักเรียนจาก
-     * student_id + password
+     * POST:
+     * ตรวจ student_id + password
+     *
+     * GET:
+     * ตรวจ student_id จาก Session
+     *
+     * ทั้งสองกรณีต้อง active = TRUE
      */
-    const student = students.find(
-      (item) =>
-        normalizeText(item.student_id) ===
-          normalizeText(studentId) &&
-        normalizeText(item.password) ===
-          normalizeText(password) &&
-        normalizeText(item.active).toUpperCase() ===
-          "TRUE"
-    );
+
+    const student =
+      students.find(
+        (item) => {
+          const sameStudent =
+            normalizeText(
+              item.student_id
+            ) ===
+            loginStudentId;
+
+          const active =
+            normalizeText(
+              item.active
+            ).toUpperCase() ===
+            "TRUE";
+
+          if (
+            !sameStudent ||
+            !active
+          ) {
+            return false;
+          }
+
+          if (
+            loginWithPassword
+          ) {
+            return (
+              normalizeText(
+                item.password
+              ) ===
+              loginPassword
+            );
+          }
+
+          return true;
+        }
+      );
 
     if (!student) {
-      return res.status(401).json({
-        error: "ไม่พบข้อมูล หรือรหัสผ่านไม่ถูกต้อง",
-      });
+      return res
+        .status(401)
+        .json({
+          error:
+            loginWithPassword
+              ? "ไม่พบข้อมูล หรือรหัสผ่านไม่ถูกต้อง"
+              : "ไม่พบข้อมูลนักเรียน หรือบัญชีถูกปิดใช้งาน",
+        });
     }
 
     /*
-     * แปลง Assessments
+     * ======================================
+     * 4. Assessments
+     * ======================================
      */
-    const assessments: Assessment[] = [];
 
-    if (assessmentsRows.length >= 2) {
-      const headers = assessmentsRows[0].map(normalizeText);
+    const assessments:
+      Assessment[] = [];
+
+    if (
+      assessmentsRows.length >=
+      2
+    ) {
+      const headers =
+        assessmentsRows[0].map(
+          normalizeText
+        );
 
       assessments.push(
         ...assessmentsRows
@@ -242,19 +448,31 @@ export default async function handler(
           )
           .filter(
             (item) =>
-              normalizeText(item.active).toUpperCase() ===
+              normalizeText(
+                item.active
+              ).toUpperCase() ===
               "TRUE"
           )
       );
     }
 
     /*
-     * แปลง AssessmentClasses
+     * ======================================
+     * 5. AssessmentClasses
+     * ======================================
      */
-    const assessmentClasses: AssessmentClass[] = [];
 
-    if (assessmentClassesRows.length >= 2) {
-      const headers = assessmentClassesRows[0].map(normalizeText);
+    const assessmentClasses:
+      AssessmentClass[] = [];
+
+    if (
+      assessmentClassesRows.length >=
+      2
+    ) {
+      const headers =
+        assessmentClassesRows[0].map(
+          normalizeText
+        );
 
       assessmentClasses.push(
         ...assessmentClassesRows
@@ -269,12 +487,22 @@ export default async function handler(
     }
 
     /*
-     * แปลง Scores
+     * ======================================
+     * 6. Scores
+     * ======================================
      */
-    const scoreRecords: ScoreRecord[] = [];
 
-    if (scoresRows.length >= 2) {
-      const headers = scoresRows[0].map(normalizeText);
+    const scoreRecords:
+      ScoreRecord[] = [];
+
+    if (
+      scoresRows.length >=
+      2
+    ) {
+      const headers =
+        scoresRows[0].map(
+          normalizeText
+        );
 
       scoreRecords.push(
         ...scoresRows
@@ -289,72 +517,178 @@ export default async function handler(
     }
 
     /*
-     * หา assessment ที่เปิดใช้งาน
-     * และใช้กับห้องของนักเรียนคนนี้
+     * ======================================
+     * 7. หาแบบประเมินของห้องนักเรียน
+     * ======================================
      */
-    const availableAssessmentIds = new Set(
-      assessmentClasses
-        .filter(
-          (item) =>
-            normalizeText(item.class_id) ===
-            normalizeText(student.class_id)
-        )
-        .map((item) =>
-          normalizeText(item.assessment_id)
-        )
-    );
+
+    const availableAssessmentIds =
+      new Set(
+        assessmentClasses
+          .filter(
+            (item) =>
+              normalizeText(
+                item.class_id
+              ) ===
+              normalizeText(
+                student.class_id
+              )
+          )
+          .map((item) =>
+            normalizeText(
+              item.assessment_id
+            )
+          )
+      );
 
     /*
-     * สร้างรายการคะแนนของนักเรียน
+     * ======================================
+     * 8. สร้างรายการคะแนน
+     * ======================================
      */
-    const scores: ScoreItem[] = assessments
-      .filter((assessment) =>
-        availableAssessmentIds.has(
-          normalizeText(assessment.assessment_id)
-        )
-      )
-      .map((assessment) => {
-        const scoreRecord = scoreRecords.find(
-          (item) =>
-            normalizeText(item.assessment_id) ===
+
+    const scores:
+      ScoreItem[] =
+      assessments
+        .filter(
+          (assessment) =>
+            availableAssessmentIds.has(
               normalizeText(
                 assessment.assessment_id
-              ) &&
-            normalizeText(item.student_id) ===
-              normalizeText(student.student_id)
+              )
+            )
+        )
+        .map(
+          (assessment) => {
+            const scoreRecord =
+              scoreRecords.find(
+                (item) =>
+                  normalizeText(
+                    item.assessment_id
+                  ) ===
+                    normalizeText(
+                      assessment.assessment_id
+                    ) &&
+                  normalizeText(
+                    item.student_id
+                  ) ===
+                    normalizeText(
+                      student.student_id
+                    )
+              );
+
+            return {
+              label:
+                normalizeText(
+                  assessment.name
+                ),
+
+              value:
+                scoreRecord
+                  ? normalizeText(
+                      scoreRecord.score
+                    )
+                  : "",
+
+              maxScore:
+                normalizeText(
+                  assessment.max_score
+                ),
+
+              type:
+                normalizeText(
+                  assessment.type
+                ),
+            };
+          }
         );
 
-        return {
-          label: normalizeText(assessment.name),
-          value: scoreRecord
-            ? normalizeText(scoreRecord.score)
-            : "",
-          maxScore: normalizeText(
-            assessment.max_score
-          ),
-          type: normalizeText(assessment.type),
-        };
-      });
-
     /*
-     * ข้อมูลที่ส่งกลับไปยังหน้าเว็บ
+     * ======================================
+     * 9. Student Result
+     * ======================================
      */
-    const result: StudentResult = {
-      student_id: normalizeText(student.student_id),
-      no: normalizeText(student.no),
-      fullname: normalizeText(student.fullname),
-      class_id: normalizeText(student.class_id),
+
+    const result:
+      StudentResult = {
+      student_id:
+        normalizeText(
+          student.student_id
+        ),
+
+      no:
+        normalizeText(
+          student.no
+        ),
+
+      fullname:
+        normalizeText(
+          student.fullname
+        ),
+
+      class_id:
+        normalizeText(
+          student.class_id
+        ),
+
       scores,
     };
 
-    return res.status(200).json({
-      student: result,
-    });
-  } catch (error) {
-    console.error("Score API error:", error);
+    /*
+     * ======================================
+     * 10. สร้าง Session
+     *
+     * ทำเฉพาะตอน Login ด้วย POST
+     * GET จะใช้ Session เดิม
+     * ======================================
+     */
 
-    return res.status(500).json({
-      error: "เกิดข้อผิดพลาดในการอ่านข้อมูลคะแนน",
-    });
+    if (
+      loginWithPassword
+    ) {
+      const sessionToken =
+        createSessionToken({
+          student_id:
+            result.student_id,
+
+          fullname:
+            result.fullname,
+
+          class_id:
+            result.class_id,
+
+          no:
+            result.no,
+        });
+
+      setSessionCookie(
+        res,
+        sessionToken
+      );
+    }
+
+    /*
+     * ======================================
+     * 11. Response
+     * ======================================
+     */
+
+    return res
+      .status(200)
+      .json({
+        student: result,
+      });
+  } catch (error) {
+    console.error(
+      "Score API error:",
+      error
+    );
+
+    return res
+      .status(500)
+      .json({
+        error:
+          "เกิดข้อผิดพลาดในการอ่านข้อมูลคะแนน",
+      });
   }
 }
