@@ -226,6 +226,10 @@ export default function SubmitPage() {
     useRef<HTMLInputElement>(
       null
     );
+const uploadAreaRef =
+  useRef<HTMLButtonElement>(
+    null
+  );
 
   const [
     student,
@@ -411,23 +415,94 @@ export default function SubmitPage() {
     }
   }
 
+function scrollToUploadArea() {
+  window.setTimeout(() => {
+    const target =
+      uploadAreaRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    const startY =
+      window.scrollY;
+
+    const targetY =
+      target.getBoundingClientRect().top +
+      window.scrollY -
+      80;
+
+    const distance =
+      targetY - startY;
+
+    const duration = 700;
+    const startTime =
+      performance.now();
+
+    function animate(
+      currentTime: number
+    ) {
+      const elapsed =
+        currentTime -
+        startTime;
+
+      const progress =
+        Math.min(
+          elapsed / duration,
+          1
+        );
+
+      const eased =
+        progress < 0.5
+          ? 4 *
+            progress *
+            progress *
+            progress
+          : 1 -
+            Math.pow(
+              -2 * progress + 2,
+              3
+            ) /
+              2;
+
+      window.scrollTo(
+        0,
+        startY +
+          distance * eased
+      );
+
+      if (progress < 1) {
+        requestAnimationFrame(
+          animate
+        );
+      }
+    }
+
+    requestAnimationFrame(
+      animate
+    );
+  }, 150);
+}
+
   function handleSelectAssignment(
-    assignmentId: string
-  ) {
-    setSelectedAssignmentId(
-      assignmentId
-    );
+  assignmentId: string
+) {
+  setSelectedAssignmentId(
+    assignmentId
+  );
 
-    setViewingFilesId(
-      null
-    );
+  setViewingFilesId(
+    null
+  );
 
-    setFiles([]);
-    setError("");
-    setSuccess("");
-    setUploadCurrent(0);
-    setUploadTotal(0);
-  }
+  setFiles([]);
+  setError("");
+  setSuccess("");
+  setUploadCurrent(0);
+  setUploadTotal(0);
+
+  scrollToUploadArea();
+}
 
   function addFiles(
     selectedFiles:
@@ -1342,7 +1417,7 @@ export default function SubmitPage() {
 
         {selectedAssignmentId && (
           <form
-            onSubmit={
+	    onSubmit={
               handleSubmit
             }
             className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
@@ -1379,7 +1454,7 @@ export default function SubmitPage() {
                     </h2>
 
                     <p className="mt-2 text-sm text-slate-500">
-                      เลือกไฟล์ได้สูงสุด 10 ไฟล์ ระบบจะจัดคิวและส่งพร้อมกันสูงสุด 2 ไฟล์
+                      เลือกไฟล์ได้สูงสุด 10 ไฟล์ ระบบจะจัดคิวและส่งพร้อมกันสูงสุด 4 ไฟล์
                     </p>
                   </div>
 
@@ -1407,6 +1482,7 @@ export default function SubmitPage() {
                   />
 
                   <button
+		        ref={uploadAreaRef}
                     type="button"
                     disabled={
                       uploading
